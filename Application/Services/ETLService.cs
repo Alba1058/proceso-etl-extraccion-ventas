@@ -1,51 +1,82 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
+using Application.Repositories;
 using Domain.Interfaces;
+using Domain.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Application.Services
 {
     public class ETLService : IETLService
     {
-        private readonly IEnumerable<IExtractor<object>> _extractores;
+        private readonly IEnumerable<IExtractor<object>> _extractors;
         private readonly ITransformationService _transformationService;
-        private readonly IDataLoader _dataLoader;
-        private readonly IStagingService _stagingService; 
+        private readonly IDwhRepository _dwhRepository;
+        private readonly IStagingService _stagingService;
         private readonly ILogger<ETLService> _logger;
 
         public ETLService(
-            IEnumerable<IExtractor<object>> extractores,
+            IEnumerable<IExtractor<object>> extractors,
             ITransformationService transformationService,
-            IDataLoader dataLoader,
+            IDwhRepository dwhRepository,
             IStagingService stagingService,
             ILogger<ETLService> logger)
         {
-            _extractores = extractores;
+            _extractors = extractors;
             _transformationService = transformationService;
-            _dataLoader = dataLoader;
+            _dwhRepository = dwhRepository;
             _stagingService = stagingService;
             _logger = logger;
         }
 
-        public async Task EjecutarProcesoETLAsync()
+        public async Task EjecutarProcesoETLAsync(CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("--- INICIANDO FASE DE EXTRACCIÓN ---");
+            _logger.LogInformation("--- INICIANDO FASE DE EXTRACCION ---");
 
-            var datosExtraidos = new List<object>();
+            var batches = await ExtractBatchesAsync(cancellationToken);
 
-            foreach (var extractor in _extractores)
+            _logger.LogInformation("--- EXTRACCION Y STAGING COMPLETADOS ---");
+
+            _logger.LogInformation("--- INICIANDO FASE DE TRANSFORMACION ---");
+            var preparedData = await _transformationService.TransformAsync(batches, cancellationToken);
+            _logger.LogInformation("--- TRANSFORMACION COMPLETADA ---");
+
+            _logger.LogInformation("--- INICIANDO FASE DE CARGA AL DATA WAREHOUSE ---");
+            var result = await _dwhRepository.LoadAnalyticsDataAsync(preparedData, cancellationToken);
+            if (!result.IsSuccess)
             {
+                throw new InvalidOperationException(result.Message);
+            }
+
+            _logger.LogInformation("--- CARGA AL DATA WAREHOUSE COMPLETADA ---");
+            _logger.LogInformation("=== PROCESO ETL FINALIZADO CON EXITO ===");
+        }
+
+        private async Task<List<ExtractionBatch>> ExtractBatchesAsync(CancellationToken cancellationToken)
+        {
+            var batches = new List<ExtractionBatch>();
+
+            foreach (var extractor in _extractors)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 try
                 {
-                    var data = await extractor.ExtractAsync();
-
-                    if (data != null && data.Any())
+                    var data = await extractor.ExtractAsync(cancellationToken);
+                    if (data.Count == 0)
                     {
-                        datosExtraidos.AddRange(data);
-                        string fileName = extractor.GetType().Name;
-
-                        await _stagingService.SaveAsync(fileName, data);
-                        _logger.LogInformation("Datos de {Extractor} guardados en Staging exitosamente.", fileName);
+                        LogExtractorWithoutData(extractor);
+                        continue;
                     }
+
+                    var batch = BuildBatch(extractor, data);
+                    batches.Add(batch);
+
+                    await _stagingService.SaveRawAsync(batch);
+                    LogBatchSaved(batch);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -53,18 +84,39 @@ namespace Application.Services
                 }
             }
 
-            _logger.LogInformation("--- EXTRACCIÓN Y STAGING COMPLETADOS ---");
+            return batches;
+        }
 
-            //fase de Transformación Simulada por ahora
-            _logger.LogInformation("--- INICIANDO FASE DE TRANSFORMACIÓN ---");
-            await _transformationService.TransformAsync();
-            _logger.LogInformation("--- TRANSFORMACIÓN COMPLETADA ---");
+        private static ExtractionBatch BuildBatch(IExtractor<object> extractor, IReadOnlyCollection<object> data)
+        {
+            return new ExtractionBatch
+            {
+                EntityName = extractor.EntityName,
+                SourceName = extractor.SourceName,
+                SourceType = extractor.SourceType,
+                Records = data.ToList(),
+                ExtractedAt = DateTimeOffset.UtcNow
+            };
+        }
 
-            _logger.LogInformation("--- INICIANDO FASE DE CARGA ---");
-            await _dataLoader.LoadAsync(datosExtraidos);
-            _logger.LogInformation("--- CARGA COMPLETADA ---");
+        private void LogExtractorWithoutData(IExtractor<object> extractor)
+        {
+            _logger.LogWarning(
+                "El extractor {Extractor} no devolvio datos. Fuente: {SourceType}::{SourceName}, entidad: {Entity}",
+                extractor.GetType().Name,
+                extractor.SourceType,
+                extractor.SourceName,
+                extractor.EntityName);
+        }
 
-            _logger.LogInformation("=== PROCESO ETL FINALIZADO CON ÉXITO ===");
+        private void LogBatchSaved(ExtractionBatch batch)
+        {
+            _logger.LogInformation(
+                "Datos guardados en staging para {SourceType}::{SourceName} - {Entity}. Registros: {Count}",
+                batch.SourceType,
+                batch.SourceName,
+                batch.EntityName,
+                batch.RecordCount);
         }
     }
 }

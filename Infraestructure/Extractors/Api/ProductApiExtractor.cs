@@ -1,21 +1,19 @@
-﻿using Domain.Interfaces;
-using Infrastructure.Extractors.API;
+using Domain.Entities.Api;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Extractors.API
 {
-    public class ProductApiExtractor : IApiExtractor
+    public class ProductApiExtractor : ApiExtractorBase<ProductApiDto>
     {
-        private readonly ApiClientService _apiClient;
-
-        public ProductApiExtractor(ApiClientService apiClient)
+        public ProductApiExtractor(ApiClientService apiClient, IConfiguration configuration, ILogger<ProductApiExtractor> logger)
+            : base(apiClient, configuration, logger)
         {
-            _apiClient = apiClient;
         }
 
-        public async Task<List<object>> ExtractAsync()
-        {
-            var data = await _apiClient.GetAsync<object>("https://api.example.com/customers");
-            return data.ToList();
-        }
+        public override string SourceName => "SalesApi";
+        public override string EntityName => nameof(ProductApiDto);
+        protected override string EndpointSettingKey => "ProductsEndpoint";
+        protected override string DefaultEndpoint => "products";
     }
 }

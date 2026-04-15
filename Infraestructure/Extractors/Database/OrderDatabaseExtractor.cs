@@ -1,38 +1,29 @@
-﻿using Domain.Interfaces;
+using Domain.Entities.Db;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Extractors.Database
 {
-    public class OrderDetailDatabaseExtractor : IDatabaseExtractor
+    public class OrderDatabaseExtractor : DatabaseExtractorBase<Order>
     {
-        private readonly string _connectionString;
-
-        public OrderDetailDatabaseExtractor(string connectionString)
+        public OrderDatabaseExtractor(IConfiguration configuration, ILogger<OrderDatabaseExtractor> logger)
+            : base(configuration, logger)
         {
-            _connectionString = connectionString;
         }
 
-        public async Task<List<object>> ExtractAsync()
+        public override string SourceName => "VentasOrigen";
+        public override string EntityName => nameof(Order);
+        protected override string DefaultQuery => "SELECT OrderID, OrderDate, CustomerID FROM Orders";
+
+        protected override Order MapRecord(SqlDataReader reader)
         {
-            var result = new List<object>();
-
-            using var conn = new SqlConnection(_connectionString);
-            await conn.OpenAsync();
-
-            var cmd = new SqlCommand("SELECT * FROM OrderDetails", conn);
-            var reader = await cmd.ExecuteReaderAsync();
-
-            while (await reader.ReadAsync())
+            return new Order
             {
-                result.Add(new
-                {
-                    OrderID = reader["OrderID"],
-                    ProductID = reader["ProductID"],
-                    Quantity = reader["Quantity"]
-                });
-            }
-
-            return result;
+                OrderID = reader.GetInt32(reader.GetOrdinal("OrderID")),
+                OrderDate = reader.GetDateTime(reader.GetOrdinal("OrderDate")),
+                CustomerID = reader.GetInt32(reader.GetOrdinal("CustomerID"))
+            };
         }
     }
 }

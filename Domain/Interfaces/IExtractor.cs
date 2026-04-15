@@ -1,13 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace Domain.Interfaces
 {
     public interface IExtractor<T>
     {
-        Task<List<T>> ExtractAsync();
+        string SourceName { get; }
+        string SourceType { get; }
+        string EntityName { get; }
+        Task<IReadOnlyCollection<T>> ExtractAsync(CancellationToken cancellationToken = default);
     }
 }

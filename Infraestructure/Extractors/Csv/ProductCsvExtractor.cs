@@ -1,21 +1,18 @@
-﻿using Domain.Interfaces;
-using Infrastructure.Extractors.CSV;
+using Domain.Entities.Csv;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Extractors.CSV
 {
-    public class ProductCsvExtractor : ICsvExtractor
+    public class ProductCsvExtractor : CsvExtractorBase<ProductCsv>
     {
-        private readonly CsvReaderService _csv;
-
-        public ProductCsvExtractor(CsvReaderService csv)
+        public ProductCsvExtractor(CsvReaderService csv, IConfiguration configuration, ILogger<ProductCsvExtractor> logger)
+            : base(csv, configuration, logger)
         {
-            _csv = csv;
         }
 
-        public async Task<List<object>> ExtractAsync()
-        {
-            var data = await _csv.ReadAsync<object>("Data/products.csv");
-            return data.Cast<object>().ToList();
-        }
+        public override string SourceName => "SalesCsv";
+        public override string EntityName => nameof(ProductCsv);
+        protected override string DefaultRelativePath => Path.Combine("Data", "products.csv");
     }
 }

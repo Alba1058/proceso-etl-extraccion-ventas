@@ -1,25 +1,34 @@
-﻿using Domain.Interfaces;
+using Domain.Interfaces;
+using Domain.Models;
+using Infrastructure.IO;
 using System.Text.Json;
 
 namespace Infrastructure.Staging
 {
     public class StagingService : IStagingService
     {
-        public async Task SaveAsync<T>(string key, List<T> data)
+        private static readonly JsonSerializerOptions JsonOptions = new()
         {
-            var json = JsonSerializer.Serialize(data);
-            await File.WriteAllTextAsync($"staging_{key}.json", json);
+            WriteIndented = true
+        };
+
+        public async Task SaveRawAsync(ExtractionBatch batch, CancellationToken cancellationToken = default)
+        {
+            var baseDirectory = PathResolver.ResolveDirectory(Path.Combine("StagingArea", "raw"));
+            var fileName = $"{batch.SourceType}_{batch.SourceName}_{batch.EntityName}.json";
+            var path = Path.Combine(baseDirectory, fileName);
+            var json = JsonSerializer.Serialize(batch, JsonOptions);
+
+            await File.WriteAllTextAsync(path, json, cancellationToken);
         }
 
-        public async Task<List<T>> LoadAsync<T>(string key)
+        public async Task SavePreparedAsync(PreparedSalesData data, CancellationToken cancellationToken = default)
         {
-            var path = $"staging_{key}.json";
+            var baseDirectory = PathResolver.ResolveDirectory(Path.Combine("StagingArea", "prepared"));
+            var path = Path.Combine(baseDirectory, "sales-prepared.json");
+            var json = JsonSerializer.Serialize(data, JsonOptions);
 
-            if (!File.Exists(path))
-                return new List<T>();
-
-            var json = await File.ReadAllTextAsync(path);
-            return JsonSerializer.Deserialize<List<T>>(json) ?? new List<T>();
+            await File.WriteAllTextAsync(path, json, cancellationToken);
         }
     }
 }

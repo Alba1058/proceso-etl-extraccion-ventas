@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Domain.Models;
 
 namespace Application.Interfaces
 {
     public interface ITransformationService
     {
-        Task TransformAsync();
+        Task<PreparedSalesData> TransformAsync(IEnumerable<ExtractionBatch> batches, CancellationToken cancellationToken = default);
     }
 }

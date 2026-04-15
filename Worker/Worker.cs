@@ -1,7 +1,7 @@
 using Application.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 
 namespace Worker
@@ -9,38 +9,50 @@ namespace Worker
     public class EtlWorker : BackgroundService
     {
         private readonly ILogger<EtlWorker> _logger;
-        private readonly IETLService _etlService; 
+        private readonly IServiceProvider _serviceProvider;
+        private readonly IHostApplicationLifetime _applicationLifetime;
 
-        public EtlWorker(ILogger<EtlWorker> logger, IETLService etlService)
+        public EtlWorker(
+            ILogger<EtlWorker> logger,
+            IServiceProvider serviceProvider,
+            IHostApplicationLifetime applicationLifetime)
         {
             _logger = logger;
-            _etlService = etlService;
+            _serviceProvider = serviceProvider;
+            _applicationLifetime = applicationLifetime;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Servicio Worker iniciado a las: {time}", DateTimeOffset.Now);
 
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
-                _logger.LogInformation("Arrancando ciclo del ETL...");
+                using var scope = _serviceProvider.CreateScope();
+                var salesAnalyticsHandlerService = scope.ServiceProvider.GetRequiredService<ISalesAnalyticsHandlerService>();
+
+                _logger.LogInformation("Arrancando ciclo del proceso analitico de ventas...");
 
                 var stopwatch = Stopwatch.StartNew();
+                
+                var result = await salesAnalyticsHandlerService.ProcessSalesAnalyticsAsync(stoppingToken);
 
-                try
+                if (!result.IsSuccess)
                 {
-                    await _etlService.EjecutarProcesoETLAsync();
-
-                    stopwatch.Stop();
-                    _logger.LogInformation("Ciclo ETL finalizado exitosamente. Tiempo total de ejecución: {ms} ms", stopwatch.ElapsedMilliseconds);
-                }
-                catch (Exception ex)
-                {
-                    stopwatch.Stop();
-                    _logger.LogCritical(ex, "El proceso ETL falló críticamente después de {ms} ms.", stopwatch.ElapsedMilliseconds);
+                    throw new InvalidOperationException(result.Message);
                 }
 
-                await Task.Delay(TimeSpan.FromHours(24), stoppingToken);
+                stopwatch.Stop();
+
+                _logger.LogInformation("Ciclo ETL finalizado exitosamente. Tiempo total de ejecucion: {ms} ms", stopwatch.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogCritical(ex, "El proceso ETL fallÃ³ crÃ­ticamente.");
+            }
+            finally
+            {
+                _applicationLifetime.StopApplication();
             }
         }
     }
