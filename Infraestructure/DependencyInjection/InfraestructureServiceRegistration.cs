@@ -2,7 +2,7 @@ using Domain.Interfaces;
 using Infrastructure.Extractors.API;
 using Infrastructure.Extractors.CSV;
 using Infrastructure.Extractors.Database;
-using Infrastructure.Staging;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -49,7 +49,7 @@ namespace Infrastructure.DependencyInjection
                 services.AddTransient<IExtractor<object>, OrderDetailDatabaseExtractor>();
             }
 
-            services.AddTransient<IStagingService, StagingService>();
+
 
             return services;
         }

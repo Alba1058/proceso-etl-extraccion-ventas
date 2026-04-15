@@ -11,20 +11,17 @@ namespace Application.Services
         private readonly IEnumerable<IExtractor<object>> _extractors;
         private readonly ITransformationService _transformationService;
         private readonly IDwhRepository _dwhRepository;
-        private readonly IStagingService _stagingService;
         private readonly ILogger<ETLService> _logger;
 
         public ETLService(
             IEnumerable<IExtractor<object>> extractors,
             ITransformationService transformationService,
             IDwhRepository dwhRepository,
-            IStagingService stagingService,
             ILogger<ETLService> logger)
         {
             _extractors = extractors;
             _transformationService = transformationService;
             _dwhRepository = dwhRepository;
-            _stagingService = stagingService;
             _logger = logger;
         }
 
@@ -71,7 +68,6 @@ namespace Application.Services
                     var batch = BuildBatch(extractor, data);
                     batches.Add(batch);
 
-                    await _stagingService.SaveRawAsync(batch);
                     LogBatchSaved(batch);
                 }
                 catch (OperationCanceledException)
